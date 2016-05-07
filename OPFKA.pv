@@ -1,0 +1,70 @@
+(* Symmetric key encryption *)
+
+type key.
+fun senc(bitstring, key): bitstring.
+reduc forall m: bitstring, k: key; sdec(senc(m,k),k) = m.
+
+
+(* Hash operation *)
+fun Hash(bitstring): key.
+
+
+(* MAC with key *)
+
+type No.
+fun MAC(key, bitstring): bitstring.
+fun MACWithNo(key, No): bitstring.
+
+
+
+free c:channel.
+
+free s:bitstring [private].
+query attacker(s).
+
+type Coffer.
+type featureVector.
+
+event acceptsSender(key).
+event termSender(key).
+event acceptsReceiver(Coffer, key).
+event termReceiver(key, No).
+
+query x:key, y:Coffer; event(termSender(x))==>event(acceptsReceiver(y, x)).
+query x:key, y:No; inj-event(termReceiver(x, y))==>event(acceptsSender(x)).
+
+let SenderA(featureA:featureVector, commonFeatureA:bitstring, coffer:Coffer) =
+  out(c, coffer);
+  in(c, x:bitstring);
+  let kA = Hash(commonFeatureA) in
+  let y = MAC(kA, commonFeatureA) in
+  if y = x then event acceptsSender(kA);
+  new no:No;
+  out(c, no);
+  in(c, z:No);
+  let no2 = z in
+  out(c, MACWithNo(kA, no2));
+  in(c, u:bitstring);
+  let v = sdec(u, kA) in
+  event termSender(kA).
+
+let ReceiverB(featureB:featureVector, commonFeatureB:bitstring) =
+  in(c, cofferX:Coffer);
+  let kB = Hash(commonFeatureB) in
+  event acceptsReceiver(cofferX, kB);
+  out(c, MAC(kB, commonFeatureB));
+  in(c, x:No);
+  new no2:No;
+  in(c, y:bitstring);
+  let z = MACWithNo(kB, no2) in
+  if y = z then out(c, senc(s, kB));
+  if y = z then event termReceiver(kB, no2).
+
+process
+  new coffer:Coffer;
+  new featureA:featureVector;
+  new featureB:featureVector;
+  new commonFeatureA:bitstring;
+  new commonFeatureB:bitstring;
+  
+  (!(SenderA(featureA, commonFeatureA, coffer)) | !(ReceiverB(featureB, commonFeatureB)))
